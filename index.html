@@ -129,6 +129,7 @@
                         </tbody>
                     </table>
                 </div>
+                <!-- Since turnover history should always have 5 entries by default, we don't need an 'Add' button here, only editing. -->
             </div>
 
             <!-- Existing Commitments (B Calculation) -->
@@ -163,11 +164,12 @@
                     </table>
                 </div>
 
-                <!-- Add New Commitment Form -->
+                <!-- Add New Commitment Form Toggle Button -->
                 <button id="showAddCommitment" class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
                     + Add New Commitment
                 </button>
 
+                <!-- Add New Commitment Form -->
                 <div id="addCommitmentForm" class="mt-4 p-4 border border-gray-200 rounded-lg hidden">
                     <h3 class="font-medium text-gray-700 mb-3">Add New Project Commitment</h3>
                     <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -261,8 +263,8 @@
             { year: 5, value: 69.73, factor: 1.20, id: 'year5' },
         ];
         
-        // UPDATED: Now storing Contract Value, Work Completed Value, and Anticipated Completion Date
         const DEFAULT_COMMITMENTS = [
+            // Ensure a unique ID is given upon initialization
             { name: "Rehabilitation and Up gradation...", contractValue: 590.00, workCompletedValue: 262.00, existingDurationMonths: 24, anticipatedCompletionDate: '2025-12-14', id: crypto.randomUUID() },
             { name: "Construction of 6-Lane ROB...", contractValue: 81.98, workCompletedValue: 0.00, existingDurationMonths: 24, anticipatedCompletionDate: '2027-05-04', id: crypto.randomUUID() }
         ];
@@ -271,8 +273,9 @@
             newProjectDurationMonths: 24,
             bidDueDate: formatDate(new Date()), // Default to today
             bonusC: 0,
-            turnoverHistory: DEFAULT_TURNOVER_HISTORY,
-            existingCommitments: DEFAULT_COMMITMENTS
+            // Store simple arrays without temporary IDs
+            turnoverHistory: DEFAULT_TURNOVER_HISTORY.map(({ id, ...rest }) => rest), 
+            existingCommitments: DEFAULT_COMMITMENTS.map(({ id, ...rest }) => rest)
         };
 
         const DATA_DOC_PATH = (uid) => `artifacts/${appId}/users/${uid}/bid_capacity_data/config`;
@@ -294,10 +297,17 @@
 
             // 2. Calculate A (Max Updated Turnover)
             let A = 0;
-            const updatedTurnovers = data.turnoverHistory.map(item => ({
+            // Add temporary IDs back for calculation/rendering stability
+            const turnoversWithId = (data.turnoverHistory || INITIAL_BID_DATA.turnoverHistory).map((item, index) => ({
+                ...item,
+                id: `year${index + 1}`
+            }));
+
+            const updatedTurnovers = turnoversWithId.map(item => ({
                 ...item,
                 updatedValue: parseFloat(item.value || 0) * parseFloat(item.factor || 0)
             }));
+            
             if (updatedTurnovers.length > 0) {
                 A = Math.max(...updatedTurnovers.map(item => item.updatedValue));
             }
@@ -314,7 +324,13 @@
 
             // 4. Calculate B (Total Adjusted Commitments)
             let B = 0;
-            const commitmentsWithAdj = data.existingCommitments.map(project => {
+            // Add temporary IDs back for calculation/rendering stability
+            const commitmentsWithId = (data.existingCommitments || INITIAL_BID_DATA.existingCommitments).map(item => ({
+                ...item,
+                id: item.id || crypto.randomUUID()
+            }));
+
+            const commitmentsWithAdj = commitmentsWithId.map(project => {
                 const CV = parseFloat(project.contractValue || 0);
                 const WV = parseFloat(project.workCompletedValue || 0);
                 
@@ -385,13 +401,13 @@
 
         /**
          * Renders the Turnover History table.
-         * @param {Array} turnovers Updated turnover objects.
+         * @param {Array} turnovers Updated turnover objects (includes temporary ID).
          */
         const renderTurnoverTable = (turnovers) => {
             const tbody = document.getElementById('turnoverTableBody');
             tbody.innerHTML = '';
             
-            // Note: results is a global variable from setupRealtimeListener
+            // Note: window.results is set in setupRealtimeListener
             const maxA = window.results.A; 
 
             turnovers.forEach(item => {
@@ -404,14 +420,14 @@
 
                 // Value
                 row.insertCell().innerHTML = `
-                    <input type="number" value="${item.value.toFixed(2)}" step="0.01" min="0" 
+                    <input type="number" value="${(item.value || 0).toFixed(2)}" step="0.01" min="0" 
                            data-id="${item.id}" data-field="value" 
                            class="input-field text-sm text-right w-full bg-transparent">
                 `;
 
                 // Factor
                 row.insertCell().innerHTML = `
-                    <input type="number" value="${item.factor.toFixed(2)}" step="0.01" min="1" 
+                    <input type="number" value="${(item.factor || 1).toFixed(2)}" step="0.01" min="1" 
                            data-id="${item.id}" data-field="factor" 
                            class="input-field text-sm text-right w-full bg-transparent">
                 `;
@@ -429,7 +445,7 @@
 
         /**
          * Renders the Existing Commitments table.
-         * @param {Array} commitments Projects with adjusted value.
+         * @param {Array} commitments Projects with adjusted value (includes temporary ID).
          */
         const renderCommitmentsTable = (commitments) => {
             const tbody = document.getElementById('commitmentsTableBody');
@@ -507,22 +523,22 @@
 
         /**
          * Writes the entire data object to Firestore.
-         * @param {object} data The data object to save.
+         * @param {object} data The data object to save (assumes cleaned data).
          */
         const writeData = async (data) => {
             if (!userId) { console.error("User not authenticated for writing data."); return; }
             const docRef = doc(db, DATA_DOC_PATH(userId));
             try {
-                // Ensure only base data fields are saved to Firestore (strip front-end IDs and calculated fields)
+                // IMPORTANT: Ensure the data written does NOT contain temporary 'id' fields from the frontend
                 const dataToSave = {
                     ...data,
-                    turnoverHistory: data.turnoverHistory.map(({ id, ...rest }) => rest),
-                    existingCommitments: data.existingCommitments.map(item => ({
+                    turnoverHistory: (data.turnoverHistory || []).map(({ id, ...rest }) => rest),
+                    existingCommitments: (data.existingCommitments || []).map(item => ({
                         name: item.name,
                         contractValue: item.contractValue || 0,
                         workCompletedValue: item.workCompletedValue || 0,
                         existingDurationMonths: item.existingDurationMonths,
-                        anticipatedCompletionDate: item.anticipatedCompletionDate || '' // NEW FIELD
+                        anticipatedCompletionDate: item.anticipatedCompletionDate || ''
                     }))
                 };
                 await setDoc(docRef, dataToSave, { merge: true });
@@ -543,30 +559,32 @@
                 let currentData;
                 if (docSnap.exists()) {
                     currentData = docSnap.data();
-                    // Re-add IDs to turnover history items for DOM manipulation stability
-                    currentData.turnoverHistory = (currentData.turnoverHistory || DEFAULT_TURNOVER_HISTORY).map((item, index) => ({
-                        ...item,
-                        id: `year${index + 1}`
-                    }));
-                     // Re-add IDs to commitment items for DOM manipulation stability (if they are missing)
-                    currentData.existingCommitments = (currentData.existingCommitments || DEFAULT_COMMITMENTS).map(item => ({
-                        ...item,
-                        id: item.id || crypto.randomUUID()
-                    }));
                 } else {
-                    // Initialize with default data if document doesn't exist
-                    currentData = INITIAL_BID_DATA;
-                    writeData(currentData); // Write defaults to Firestore
-                    return; // Avoid double calculation/rendering
+                    // FIX: If doc doesn't exist, use INITIAL_BID_DATA immediately for calculation/rendering
+                    currentData = INITIAL_BID_DATA; 
+                    writeData(currentData); // Write defaults to Firestore async
+                    // Continue execution to render defaults immediately
                 }
+                
+                // Ensure default arrays are used if the fetched document had missing arrays (this handles the 'blank table' issue)
+                const turnoverHistoryData = currentData.turnoverHistory || INITIAL_BID_DATA.turnoverHistory;
+                const existingCommitmentsData = currentData.existingCommitments || INITIAL_BID_DATA.existingCommitments;
+
+                const processedData = {
+                    newProjectDurationMonths: currentData.newProjectDurationMonths || INITIAL_BID_DATA.newProjectDurationMonths,
+                    bidDueDate: currentData.bidDueDate || INITIAL_BID_DATA.bidDueDate,
+                    bonusC: currentData.bonusC || INITIAL_BID_DATA.bonusC,
+                    turnoverHistory: turnoverHistoryData,
+                    existingCommitments: existingCommitmentsData
+                };
 
                 // Update UI inputs
-                document.getElementById('bidDueDate').value = currentData.bidDueDate || ''; // NEW
-                document.getElementById('projectDuration').value = currentData.newProjectDurationMonths;
-                document.getElementById('bonusC').value = currentData.bonusC;
+                document.getElementById('bidDueDate').value = processedData.bidDueDate || '';
+                document.getElementById('projectDuration').value = processedData.newProjectDurationMonths;
+                document.getElementById('bonusC').value = processedData.bonusC;
 
                 // Perform calculations and rendering
-                window.results = calculateBidCapacity(currentData);
+                window.results = calculateBidCapacity(processedData);
                 renderResults(window.results);
                 renderTurnoverTable(window.results.turnovers);
                 renderCommitmentsTable(window.results.commitments);
@@ -585,7 +603,7 @@
             const docRef = doc(db, DATA_DOC_PATH(userId));
             try {
                 await updateDoc(docRef, {
-                    bidDueDate: document.getElementById('bidDueDate').value, // NEW
+                    bidDueDate: document.getElementById('bidDueDate').value, 
                     newProjectDurationMonths: parseFloat(document.getElementById('projectDuration').value) || 0,
                     bonusC: parseFloat(document.getElementById('bonusC').value) || 0
                 });
@@ -639,35 +657,35 @@
             const { id, field } = input.dataset;
             let value;
 
-            if (field === 'name' || field === 'anticipatedCompletionDate') { // Added date field check
+            if (field === 'name' || field === 'anticipatedCompletionDate') {
                 value = input.value;
             } else {
                 value = parseFloat(input.value) || 0;
                 
-                // General numeric validation
                 if (value < 0) { value = 0; input.value = 0; }
                 
-                // Duration validation (Must be at least 1 month)
                 if (field === 'existingDurationMonths' && value < 1) { value = 1; input.value = 1; }
             }
 
             const docRef = doc(db, DATA_DOC_PATH(userId));
             
+            // Map the current commitments, applying the update to the matching ID.
             const commitmentsToSave = window.results.commitments.map(item => {
-                // 1. Create a clean base object from the item (removing all calculated fields and frontend ID)
-                const cleanItem = {
+                let updatedItem = {
                     name: item.name,
                     contractValue: item.contractValue || 0,
                     workCompletedValue: item.workCompletedValue || 0,
                     existingDurationMonths: item.existingDurationMonths,
-                    anticipatedCompletionDate: item.anticipatedCompletionDate || '' // NEW FIELD
+                    anticipatedCompletionDate: item.anticipatedCompletionDate || ''
                 };
 
-                // 2. Apply the update to the specific item
+                // Apply the update to the specific item
                 if (item.id === id) {
-                    cleanItem[field] = value;
+                    updatedItem[field] = value;
                 }
-                return cleanItem;
+                
+                // Return the clean, updated item without the frontend ID
+                return updatedItem;
             });
             
             // Write the new array back to Firestore
@@ -688,28 +706,31 @@
             const contractInput = document.getElementById('newContractValue'); 
             const completedInput = document.getElementById('newWorkCompleted'); 
             const durationInput = document.getElementById('newCommitmentDuration');
-            const anticipatedInput = document.getElementById('newAnticipatedDate'); // NEW
+            const anticipatedInput = document.getElementById('newAnticipatedDate'); 
+
+            // Basic validation
+            if (!nameInput.value.trim() || !contractInput.value || !durationInput.value) {
+                console.error("Please fill out Name, Contract Value, and Duration.");
+                return;
+            }
 
             // The object structure for the new commitment (base fields only)
             const newCommitmentData = {
-                name: nameInput.value.trim() || 'New Project',
+                name: nameInput.value.trim(),
                 contractValue: parseFloat(contractInput.value) || 0,
                 workCompletedValue: parseFloat(completedInput.value) || 0,
                 existingDurationMonths: parseFloat(durationInput.value) || 1,
-                anticipatedCompletionDate: anticipatedInput.value || '' // NEW
+                anticipatedCompletionDate: anticipatedInput.value || '' 
             };
             
-            // Get the current list of commitments and ensure they are clean (no derived properties/IDs)
-            const commitmentsToSave = window.results.commitments.map(item => {
-                const cleanItem = {
-                    name: item.name,
-                    contractValue: item.contractValue || 0,
-                    workCompletedValue: item.workCompletedValue || 0,
-                    existingDurationMonths: item.existingDurationMonths,
-                    anticipatedCompletionDate: item.anticipatedCompletionDate || '' // NEW
-                };
-                return cleanItem;
-            });
+            // Map current commitments to ensure they are clean (no derived properties/IDs)
+            const commitmentsToSave = window.results.commitments.map(item => ({
+                name: item.name,
+                contractValue: item.contractValue || 0,
+                workCompletedValue: item.workCompletedValue || 0,
+                existingDurationMonths: item.existingDurationMonths,
+                anticipatedCompletionDate: item.anticipatedCompletionDate || ''
+            }));
             
             commitmentsToSave.push(newCommitmentData); // Add the new item
 
@@ -722,7 +743,7 @@
                 contractInput.value = '';
                 completedInput.value = '';
                 durationInput.value = '';
-                anticipatedInput.value = ''; // Clear new input
+                anticipatedInput.value = ''; 
                 document.getElementById('addCommitmentForm').classList.add('hidden');
             } catch (error) {
                 console.error("Error adding new commitment:", error);
@@ -742,14 +763,14 @@
                     contractValue: item.contractValue || 0,
                     workCompletedValue: item.workCompletedValue || 0,
                     existingDurationMonths: item.existingDurationMonths,
-                    anticipatedCompletionDate: item.anticipatedCompletionDate || '' // NEW FIELD
+                    anticipatedCompletionDate: item.anticipatedCompletionDate || ''
                 }));
             
             const docRef = doc(db, DATA_DOC_PATH(userId));
 
             try {
                 await updateDoc(docRef, { existingCommitments: commitmentsToSave });
-            } catch (error)
+            } catch (error) {
                 console.error("Error deleting commitment:", error);
             }
         };
@@ -770,10 +791,8 @@
                     console.log("Firestore offline persistence enabled.");
                 } catch (err) {
                     if (err.code == 'failed-precondition') {
-                        // Multiple tabs open, only one can enable
                         console.warn("Firestore offline persistence failed (failed-precondition), likely multiple tabs open.");
                     } else if (err.code == 'unimplemented') {
-                        // Browser not supported
                         console.warn("Firestore offline persistence is not supported in this browser.");
                     }
                 }
@@ -803,7 +822,7 @@
                 });
 
                 // Attach event listeners for global inputs
-                document.getElementById('bidDueDate').addEventListener('change', updateGlobalInputs); // NEW
+                document.getElementById('bidDueDate').addEventListener('change', updateGlobalInputs);
                 document.getElementById('projectDuration').addEventListener('change', updateGlobalInputs);
                 document.getElementById('bonusC').addEventListener('change', updateGlobalInputs);
                 document.getElementById('saveNewCommitment').addEventListener('click', addNewCommitment);
@@ -819,7 +838,7 @@
 
         window.onload = initializeFirebase;
 
-        // --- NEW: PWA SERVICE WORKER REGISTRATION ---
+        // --- PWA SERVICE WORKER REGISTRATION ---
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./serviceworker.js')
