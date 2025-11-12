@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ApexBid Capacity Calculator</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .section-card {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+        }
+        .input-field {
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            width: 100%;
+            transition: all 0.2s;
+        }
+        .input-field:focus {
+            outline: none;
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+        }
+    </style>
+    <!-- NEW: PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <!-- NEW: PWA Theme Color -->
+    <meta name="theme-color" content="#4f46e5">
+</head>
+<body>
+
+    <div id="app" class="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-indigo-700">ApexBid Capacity Calculator</h1>
+            <p id="auth-status" class="text-sm text-gray-500 mt-2">Loading authentication...</p>
+        </header>
+
+        <div class="max-w-6xl mx-auto space-y-8">
+            <!-- Summary and Bid Capacity Output -->
+            <div class="section-card bg-indigo-50 border-t-4 border-indigo-500">
+                <h2 class="text-2xl font-semibold text-indigo-700 mb-4">Final Bid Capacity Result</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-center">
+                    <div class="p-3 bg-white rounded-lg shadow-sm">
+                        <p class="text-xs text-gray-500">N (Years)</p>
+                        <p id="output-N" class="text-lg font-bold text-gray-800">0.00</p>
+                    </div>
+                    <div class="p-3 bg-white rounded-lg shadow-sm">
+                        <p class="text-xs text-gray-500">A (Max Turnover)</p>
+                        <p id="output-A" class="text-lg font-bold text-gray-800">0.00 Cr</p>
+                    </div>
+                    <div class="p-3 bg-white rounded-lg shadow-sm">
+                        <p class="text-xs text-gray-500">B (Total Commitments)</p>
+                        <p id="output-B" class="text-lg font-bold text-red-600">0.00 Cr</p>
+                    </div>
+                    <div class="p-3 bg-white rounded-lg shadow-sm">
+                        <p class="text-xs text-gray-500">C (Bonus)</p>
+                        <p id="output-C" class="text-lg font-bold text-green-600">0.00 Cr</p>
+                    </div>
+                    <div class="p-3 rounded-lg shadow-md bg-indigo-600 text-white col-span-1 lg:col-span-1">
+                        <p class="text-base">Bid Capacity (AIPL)</p>
+                        <p id="output-bid-capacity" class="text-2xl font-extrabold mt-1">0.00 Crores</p>
+                    </div>
+                </div>
+                <p id="formula-display" class="mt-4 text-sm text-indigo-600 text-center">
+                    Formula: (A x N x 2.5) - B + C
+                </p>
+            </div>
+
+            <!-- Global Inputs -->
+            <div class="section-card">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">1. Project & Bid Inputs</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label for="bidDueDate" class="block text-sm font-medium text-gray-700 mb-1">
+                            Bid Due Date
+                        </label>
+                        <input type="date" id="bidDueDate" class="input-field">
+                        <p class="mt-1 text-xs text-gray-500">
+                            (Start date for the N-month lookahead period).
+                        </p>
+                    </div>
+                    <div>
+                        <label for="projectDuration" class="block text-sm font-medium text-gray-700 mb-1">
+                            New Project Duration (N) in Months
+                        </label>
+                        <input type="number" id="projectDuration" value="24" min="1" step="1" placeholder="e.g., 24" class="input-field">
+                        <p class="mt-1 text-xs text-gray-500">
+                            (Used for formula and lookahead period).
+                        </p>
+                    </div>
+                    <div>
+                        <label for="bonusC" class="block text-sm font-medium text-gray-700 mb-1">
+                            Bonus Amount (C) in Crores (Manual Entry)
+                        </label>
+                        <input type="number" id="bonusC" value="0" min="0" step="0.01" placeholder="e.g., 10" class="input-field">
+                    </div>
+                </div>
+                <p id="targetCompletionDate" class="mt-4 text-base text-indigo-600 font-semibold text-center md:text-left">
+                    Calculated Commitment Completion Date (Target): N/A
+                </p>
+            </div>
+
+            <!-- Turnover History (A Calculation) -->
+            <div class="section-card">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">2. Turnover History (Calculate Value of A)</h2>
+                <p class="text-sm text-gray-600 mb-4">Enter the value of civil engineering works for the last five years. Value **A** will be the maximum updated value.</p>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value (Crores)</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Updation Factor</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Updated Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="turnoverTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Rows inserted by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Existing Commitments (B Calculation) -->
+            <div class="section-card">
+                <h2 class="text-xl font-semibold text-gray-800 mb-4">3. Existing Commitments (Calculate Value of B)</h2>
+                <p class="text-sm text-gray-600 mb-4">Value **B** is calculated based on whether the **Anticipated Completion Date** falls within the Target Completion Date.</p>
+
+                <div class="overflow-x-auto mb-4">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Project Name</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value of Contract (Cr)</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Work Completed (Cr)</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Value (BV) (Cr)</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Existing Duration (CD) (Months)</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Anticipated Completion Date</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold text-gray-800 uppercase tracking-wider">Adjusted Value</th>
+                                <th class="px-3 py-3"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="commitmentsTableBody" class="bg-white divide-y divide-gray-200">
+                            <!-- Rows inserted by JS -->
+                        </tbody>
+                        <tfoot class="bg-gray-100">
+                            <tr>
+                                <td colspan="6" class="px-3 py-3 text-right text-base font-semibold text-gray-800">Total B (Commitments):</td>
+                                <td id="totalBOutput" class="px-3 py-3 text-left text-base font-bold text-red-600">0.00 Cr</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- Add New Commitment Form -->
+                <button id="showAddCommitment" class="bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg shadow transition duration-150">
+                    + Add New Commitment
+                </button>
+
+                <div id="addCommitmentForm" class="mt-4 p-4 border border-gray-200 rounded-lg hidden">
+                    <h3 class="font-medium text-gray-700 mb-3">Add New Project Commitment</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                        <input type="text" id="newCommitmentName" placeholder="Project Name" class="input-field md:col-span-5">
+                        <input type="number" id="newContractValue" min="0" step="0.01" placeholder="Value of Contract (Cr)" class="input-field">
+                        <input type="number" id="newWorkCompleted" min="0" step="0.01" placeholder="Work Completed (Cr)" class="input-field">
+                        <input type="number" id="newCommitmentDuration" min="1" step="1" placeholder="Existing Duration (Months)" class="input-field">
+                        <input type="date" id="newAnticipatedDate" placeholder="Anticipated Completion Date" class="input-field">
+                        <button id="saveNewCommitment" class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 md:col-span-1">
+                            Save
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, 
+            signInAnonymously, 
+            signInWithCustomToken, 
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, 
+            doc, 
+            setDoc, 
+            onSnapshot, 
+            collection,
+            getDocs,
+            deleteDoc,
+            query,
+            updateDoc,
+            getDoc,
+            setLogLevel,
+            enableIndexedDbPersistence // NEW: Import offline persistence
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // IMPORTANT: Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth, userId;
+        let isAuthReady = false;
+
+        // Set log level for debugging
+        setLogLevel('debug');
+
+        // Utility for date string to Date object (UTC start of day)
+        const parseDate = (dateString) => {
+            if (!dateString) return null;
+            // Use UTC to prevent timezone issues with day calculation
+            return new Date(`${dateString}T00:00:00Z`);
+        };
+        
+        // Utility to add N months to a date and subtract one day to get the end date of the period
+        const addMonths = (date, months) => {
+            if (!date) return null;
+            const newDate = new Date(date.valueOf()); // Copy date
+            
+            // Add months
+            newDate.setUTCMonth(newDate.getUTCMonth() + months);
+            
+            // Handle day overflow (e.g., adding 1 month to Jan 31st should result in Feb 28/29)
+            if (newDate.getUTCMonth() !== (date.getUTCMonth() + months) % 12) {
+                newDate.setUTCDate(0); // set to last day of previous month
+            }
+            
+            // CRITICAL: Subtract one day to match the calculation requirement (e.g., 12-11-2025 + 2 years = 11-11-2027)
+            newDate.setUTCDate(newDate.getUTCDate() - 1);
+            return newDate;
+        };
+
+        // Utility to format Date object to YYYY-MM-DD string
+        const formatDate = (date) => {
+            if (!date) return '';
+            // Get YYYY-MM-DD in UTC (ISO string)
+            return date.toISOString().split('T')[0];
+        };
+
+        // --- Initial Data Defaults (Based on Excel Snippets) ---
+        const DEFAULT_TURNOVER_HISTORY = [
+            { year: 1, value: 562.6, factor: 1.00, id: 'year1' },
+            { year: 2, value: 430.49, factor: 1.05, id: 'year2' },
+            { year: 3, value: 315.65, factor: 1.10, id: 'year3' },
+            { year: 4, value: 213.6, factor: 1.15, id: 'year4' },
+            { year: 5, value: 69.73, factor: 1.20, id: 'year5' },
+        ];
+        
+        // UPDATED: Now storing Contract Value, Work Completed Value, and Anticipated Completion Date
+        const DEFAULT_COMMITMENTS = [
+            { name: "Rehabilitation and Up gradation...", contractValue: 590.00, workCompletedValue: 262.00, existingDurationMonths: 24, anticipatedCompletionDate: '2025-12-14', id: crypto.randomUUID() },
+            { name: "Construction of 6-Lane ROB...", contractValue: 81.98, workCompletedValue: 0.00, existingDurationMonths: 24, anticipatedCompletionDate: '2027-05-04', id: crypto.randomUUID() }
+        ];
+
+        const INITIAL_BID_DATA = {
+            newProjectDurationMonths: 24,
+            bidDueDate: formatDate(new Date()), // Default to today
+            bonusC: 0,
+            turnoverHistory: DEFAULT_TURNOVER_HISTORY,
+            existingCommitments: DEFAULT_COMMITMENTS
+        };
+
+        const DATA_DOC_PATH = (uid) => `artifacts/${appId}/users/${uid}/bid_capacity_data/config`;
+
+        // --- Core Calculation Logic ---
+
+        /**
+         * Calculates A, B, N, and the final Bid Capacity.
+         * @param {object} data The current application state data.
+         * @returns {object} Calculated values (A, N_years, B, C, BidCapacity, TargetDateStr, turnovers, commitments).
+         */
+        const calculateBidCapacity = (data) => {
+            const N_months = parseFloat(data.newProjectDurationMonths || 0);
+            const C = parseFloat(data.bonusC || 0);
+            const bidDueDateStr = data.bidDueDate;
+            
+            // 1. Calculate N (Years)
+            const N_years = N_months > 0 ? N_months / 12 : 0;
+
+            // 2. Calculate A (Max Updated Turnover)
+            let A = 0;
+            const updatedTurnovers = data.turnoverHistory.map(item => ({
+                ...item,
+                updatedValue: parseFloat(item.value || 0) * parseFloat(item.factor || 0)
+            }));
+            if (updatedTurnovers.length > 0) {
+                A = Math.max(...updatedTurnovers.map(item => item.updatedValue));
+            }
+
+            // 3. Calculate the Target Completion Date (Bid Due Date + N months - 1 day)
+            let targetDate = null;
+            let targetDateStr = 'N/A';
+            const bidDueDate = parseDate(bidDueDateStr);
+            
+            if (bidDueDate && N_months > 0) {
+                targetDate = addMonths(bidDueDate, N_months);
+                targetDateStr = formatDate(targetDate);
+            }
+
+            // 4. Calculate B (Total Adjusted Commitments)
+            let B = 0;
+            const commitmentsWithAdj = data.existingCommitments.map(project => {
+                const CV = parseFloat(project.contractValue || 0);
+                const WV = parseFloat(project.workCompletedValue || 0);
+                
+                // Balance Value (BV) is derived: Contract Value - Work Completed Value
+                const BV = Math.max(0, CV - WV);
+                
+                const CD = parseFloat(project.existingDurationMonths || 0); // Existing Contract Duration
+                const anticipatedDate = parseDate(project.anticipatedCompletionDate);
+                
+                let adjustedValue = 0;
+                
+                if (BV > 0 && CD > 0 && N_months > 0) {
+                    
+                    if (targetDate && anticipatedDate) {
+                        // NEW LOGIC: If Anticipated Date <= Target Date, use full Balance Value
+                        if (anticipatedDate.valueOf() <= targetDate.valueOf()) {
+                            adjustedValue = BV;
+                        } else {
+                            // LOGIC for work that runs past the target date:
+                            // Adjusted Value = (Balance Value / Existing Duration) * N_months (proportionate share)
+                            adjustedValue = (BV / CD) * N_months;
+                        }
+                    } else {
+                        // Fallback to original duration-based logic if dates are missing or invalid
+                         if (CD < N_months) {
+                            adjustedValue = BV;
+                        } else {
+                            adjustedValue = (BV / CD) * N_months;
+                        }
+                    }
+                }
+                
+                B += adjustedValue;
+                // Return calculated BV along with adjustedValue
+                return { ...project, balanceValue: BV, adjustedValue }; 
+            });
+
+            // 5. Calculate Final Bid Capacity
+            // Bid Capacity = A x N x 2.5 - B + C
+            const capacity = (A * N_years * 2.5) - B + C;
+
+            return {
+                N_years,
+                A,
+                B,
+                C,
+                BidCapacity: capacity,
+                turnovers: updatedTurnovers,
+                commitments: commitmentsWithAdj, // Return commitments with calculated values
+                targetDateStr: targetDateStr
+            };
+        };
+
+        // --- DOM Rendering Functions ---
+
+        /**
+         * Renders the Bid Capacity results.
+         * @param {object} results The calculated values.
+         */
+        const renderResults = (results) => {
+            document.getElementById('output-N').textContent = results.N_years.toFixed(2);
+            document.getElementById('output-A').textContent = results.A.toFixed(2) + ' Cr';
+            document.getElementById('output-B').textContent = results.B.toFixed(2) + ' Cr';
+            document.getElementById('output-C').textContent = results.C.toFixed(2) + ' Cr';
+            document.getElementById('output-bid-capacity').textContent = results.BidCapacity.toFixed(2) + ' Crores';
+            document.getElementById('targetCompletionDate').textContent = `Calculated Commitment Completion Date (Target): ${results.targetDateStr}`;
+        };
+
+        /**
+         * Renders the Turnover History table.
+         * @param {Array} turnovers Updated turnover objects.
+         */
+        const renderTurnoverTable = (turnovers) => {
+            const tbody = document.getElementById('turnoverTableBody');
+            tbody.innerHTML = '';
+            
+            // Note: results is a global variable from setupRealtimeListener
+            const maxA = window.results.A; 
+
+            turnovers.forEach(item => {
+                const isMax = item.updatedValue === maxA && maxA > 0;
+                const row = tbody.insertRow();
+                row.className = isMax ? 'bg-yellow-50 font-bold' : 'bg-white';
+                
+                // Year
+                row.insertCell().innerHTML = `<div class="px-3 py-2 text-sm text-gray-900">${item.year}</div>`;
+
+                // Value
+                row.insertCell().innerHTML = `
+                    <input type="number" value="${item.value.toFixed(2)}" step="0.01" min="0" 
+                           data-id="${item.id}" data-field="value" 
+                           class="input-field text-sm text-right w-full bg-transparent">
+                `;
+
+                // Factor
+                row.insertCell().innerHTML = `
+                    <input type="number" value="${item.factor.toFixed(2)}" step="0.01" min="1" 
+                           data-id="${item.id}" data-field="factor" 
+                           class="input-field text-sm text-right w-full bg-transparent">
+                `;
+
+                // Updated Value
+                row.insertCell().innerHTML = `<div class="px-3 py-2 text-sm text-gray-900 ${isMax ? 'text-indigo-600' : ''}">
+                    ${item.updatedValue.toFixed(2)}
+                </div>`;
+            });
+            // Attach event listeners for A table edits
+            tbody.querySelectorAll('input').forEach(input => {
+                input.addEventListener('change', updateTurnoverHistory);
+            });
+        };
+
+        /**
+         * Renders the Existing Commitments table.
+         * @param {Array} commitments Projects with adjusted value.
+         */
+        const renderCommitmentsTable = (commitments) => {
+            const tbody = document.getElementById('commitmentsTableBody');
+            tbody.innerHTML = '';
+            let totalB = 0;
+
+            commitments.forEach(project => {
+                totalB += project.adjustedValue;
+                const row = tbody.insertRow();
+                row.className = 'hover:bg-gray-50';
+
+                // Project Name (Editable for convenience)
+                row.insertCell().innerHTML = `
+                    <input type="text" value="${project.name}" data-id="${project.id}" data-field="name" 
+                           class="input-field text-sm w-full bg-transparent p-1">
+                `;
+                
+                // Contract Value (CV)
+                row.insertCell().innerHTML = `
+                    <input type="number" value="${(project.contractValue || 0).toFixed(2)}" min="0" step="0.01" 
+                           data-id="${project.id}" data-field="contractValue" 
+                           class="input-field text-sm text-right w-full bg-transparent p-1">
+                `;
+
+                // Work Completed Value (WV)
+                row.insertCell().innerHTML = `
+                    <input type="number" value="${(project.workCompletedValue || 0).toFixed(2)}" min="0" step="0.01" 
+                           data-id="${project.id}" data-field="workCompletedValue" 
+                           class="input-field text-sm text-right w-full bg-transparent p-1">
+                `;
+                
+                // Balance Value (BV) - Display Only (Derived from CV - WV)
+                row.insertCell().innerHTML = `<div class="px-3 py-2 text-sm text-gray-900 font-medium">
+                    ${project.balanceValue.toFixed(2)} Cr
+                </div>`;
+                
+                // Existing Duration (CD)
+                row.insertCell().innerHTML = `
+                    <input type="number" value="${project.existingDurationMonths}" min="1" step="1" 
+                           data-id="${project.id}" data-field="existingDurationMonths" 
+                           class="input-field text-sm text-right w-full bg-transparent p-1">
+                `;
+                
+                // NEW: Anticipated Completion Date
+                row.insertCell().innerHTML = `
+                    <input type="date" value="${project.anticipatedCompletionDate || ''}" 
+                           data-id="${project.id}" data-field="anticipatedCompletionDate" 
+                           class="input-field text-sm w-full bg-transparent p-1">
+                `;
+
+                // Adjusted Value
+                row.insertCell().innerHTML = `<div class="px-3 py-2 text-sm text-red-600 font-medium">
+                    ${project.adjustedValue.toFixed(2)} Cr
+                </div>`;
+                
+                // Actions
+                row.insertCell().innerHTML = `
+                    <button class="text-red-500 hover:text-red-700 text-sm font-medium transition duration-150"
+                            data-id="${project.id}" onclick="deleteCommitment(this)">
+                        Remove
+                    </button>
+                `;
+            });
+
+            document.getElementById('totalBOutput').textContent = totalB.toFixed(2) + ' Cr';
+
+            // Attach event listeners for B table edits
+            tbody.querySelectorAll('input').forEach(input => {
+                input.addEventListener('change', updateCommitmentData);
+            });
+        };
+
+
+        // --- Firestore Interaction Functions ---
+
+        /**
+         * Writes the entire data object to Firestore.
+         * @param {object} data The data object to save.
+         */
+        const writeData = async (data) => {
+            if (!userId) { console.error("User not authenticated for writing data."); return; }
+            const docRef = doc(db, DATA_DOC_PATH(userId));
+            try {
+                // Ensure only base data fields are saved to Firestore (strip front-end IDs and calculated fields)
+                const dataToSave = {
+                    ...data,
+                    turnoverHistory: data.turnoverHistory.map(({ id, ...rest }) => rest),
+                    existingCommitments: data.existingCommitments.map(item => ({
+                        name: item.name,
+                        contractValue: item.contractValue || 0,
+                        workCompletedValue: item.workCompletedValue || 0,
+                        existingDurationMonths: item.existingDurationMonths,
+                        anticipatedCompletionDate: item.anticipatedCompletionDate || '' // NEW FIELD
+                    }))
+                };
+                await setDoc(docRef, dataToSave, { merge: true });
+            } catch (error) {
+                console.error("Error writing document: ", error);
+            }
+        };
+
+        /**
+         * Fetches initial data or listens to real-time updates.
+         */
+        const setupRealtimeListener = () => {
+            if (!userId) return;
+
+            // 1. Listen for changes in the main config document
+            const docRef = doc(db, DATA_DOC_PATH(userId));
+            onSnapshot(docRef, (docSnap) => {
+                let currentData;
+                if (docSnap.exists()) {
+                    currentData = docSnap.data();
+                    // Re-add IDs to turnover history items for DOM manipulation stability
+                    currentData.turnoverHistory = (currentData.turnoverHistory || DEFAULT_TURNOVER_HISTORY).map((item, index) => ({
+                        ...item,
+                        id: `year${index + 1}`
+                    }));
+                     // Re-add IDs to commitment items for DOM manipulation stability (if they are missing)
+                    currentData.existingCommitments = (currentData.existingCommitments || DEFAULT_COMMITMENTS).map(item => ({
+                        ...item,
+                        id: item.id || crypto.randomUUID()
+                    }));
+                } else {
+                    // Initialize with default data if document doesn't exist
+                    currentData = INITIAL_BID_DATA;
+                    writeData(currentData); // Write defaults to Firestore
+                    return; // Avoid double calculation/rendering
+                }
+
+                // Update UI inputs
+                document.getElementById('bidDueDate').value = currentData.bidDueDate || ''; // NEW
+                document.getElementById('projectDuration').value = currentData.newProjectDurationMonths;
+                document.getElementById('bonusC').value = currentData.bonusC;
+
+                // Perform calculations and rendering
+                window.results = calculateBidCapacity(currentData);
+                renderResults(window.results);
+                renderTurnoverTable(window.results.turnovers);
+                renderCommitmentsTable(window.results.commitments);
+            }, (error) => {
+                console.error("Error listening to document: ", error);
+            });
+        };
+
+        // --- Event Handlers & Mutators ---
+
+        /**
+         * Updates global inputs (Bid Date, N, and C) and saves to Firestore.
+         */
+        const updateGlobalInputs = async () => {
+            if (!userId) { console.warn("Authentication not ready."); return; }
+            const docRef = doc(db, DATA_DOC_PATH(userId));
+            try {
+                await updateDoc(docRef, {
+                    bidDueDate: document.getElementById('bidDueDate').value, // NEW
+                    newProjectDurationMonths: parseFloat(document.getElementById('projectDuration').value) || 0,
+                    bonusC: parseFloat(document.getElementById('bonusC').value) || 0
+                });
+            } catch (error) {
+                console.error("Error updating global inputs:", error);
+            }
+        };
+
+        /**
+         * Updates a value in the turnover history array.
+         */
+        const updateTurnoverHistory = async (event) => {
+            if (!userId || !window.results) { return; }
+            const input = event.target;
+            const { id, field } = input.dataset;
+            let value = parseFloat(input.value) || 0;
+            
+            // Ensure factor is at least 1
+            if (field === 'factor' && value < 1) {
+                value = 1;
+                input.value = 1; 
+            }
+
+            const docRef = doc(db, DATA_DOC_PATH(userId));
+            
+            // Find the item to update in the current data snapshot
+            const updatedHistory = window.results.turnovers.map(item => {
+                if (item.id === id) {
+                    return { ...item, [field]: value };
+                }
+                return item;
+            });
+            
+            // Write the new array back to Firestore (strip front-end ID before saving)
+            try {
+                const historyToSave = updatedHistory.map(({ id, ...rest }) => rest);
+                await updateDoc(docRef, { turnoverHistory: historyToSave });
+            } catch (error) {
+                console.error("Error updating turnover history:", error);
+            }
+        };
+
+
+        /**
+         * Updates a value in the existing commitments array.
+         * Handles both base fields (Contract, Completed, Duration, Date) and saves the clean array.
+         */
+        const updateCommitmentData = async (event) => {
+            if (!userId || !window.results) { return; }
+            const input = event.target;
+            const { id, field } = input.dataset;
+            let value;
+
+            if (field === 'name' || field === 'anticipatedCompletionDate') { // Added date field check
+                value = input.value;
+            } else {
+                value = parseFloat(input.value) || 0;
+                
+                // General numeric validation
+                if (value < 0) { value = 0; input.value = 0; }
+                
+                // Duration validation (Must be at least 1 month)
+                if (field === 'existingDurationMonths' && value < 1) { value = 1; input.value = 1; }
+            }
+
+            const docRef = doc(db, DATA_DOC_PATH(userId));
+            
+            const commitmentsToSave = window.results.commitments.map(item => {
+                // 1. Create a clean base object from the item (removing all calculated fields and frontend ID)
+                const cleanItem = {
+                    name: item.name,
+                    contractValue: item.contractValue || 0,
+                    workCompletedValue: item.workCompletedValue || 0,
+                    existingDurationMonths: item.existingDurationMonths,
+                    anticipatedCompletionDate: item.anticipatedCompletionDate || '' // NEW FIELD
+                };
+
+                // 2. Apply the update to the specific item
+                if (item.id === id) {
+                    cleanItem[field] = value;
+                }
+                return cleanItem;
+            });
+            
+            // Write the new array back to Firestore
+            try {
+                await updateDoc(docRef, { existingCommitments: commitmentsToSave });
+            } catch (error) {
+                console.error("Error updating commitment data:", error);
+            }
+        };
+
+        /**
+         * Adds a new project commitment to the array in Firestore.
+         */
+        const addNewCommitment = async () => {
+            if (!userId || !window.results) { return; }
+
+            const nameInput = document.getElementById('newCommitmentName');
+            const contractInput = document.getElementById('newContractValue'); 
+            const completedInput = document.getElementById('newWorkCompleted'); 
+            const durationInput = document.getElementById('newCommitmentDuration');
+            const anticipatedInput = document.getElementById('newAnticipatedDate'); // NEW
+
+            // The object structure for the new commitment (base fields only)
+            const newCommitmentData = {
+                name: nameInput.value.trim() || 'New Project',
+                contractValue: parseFloat(contractInput.value) || 0,
+                workCompletedValue: parseFloat(completedInput.value) || 0,
+                existingDurationMonths: parseFloat(durationInput.value) || 1,
+                anticipatedCompletionDate: anticipatedInput.value || '' // NEW
+            };
+            
+            // Get the current list of commitments and ensure they are clean (no derived properties/IDs)
+            const commitmentsToSave = window.results.commitments.map(item => {
+                const cleanItem = {
+                    name: item.name,
+                    contractValue: item.contractValue || 0,
+                    workCompletedValue: item.workCompletedValue || 0,
+                    existingDurationMonths: item.existingDurationMonths,
+                    anticipatedCompletionDate: item.anticipatedCompletionDate || '' // NEW
+                };
+                return cleanItem;
+            });
+            
+            commitmentsToSave.push(newCommitmentData); // Add the new item
+
+            const docRef = doc(db, DATA_DOC_PATH(userId));
+
+            try {
+                await updateDoc(docRef, { existingCommitments: commitmentsToSave });
+                // Clear form and hide it
+                nameInput.value = '';
+                contractInput.value = '';
+                completedInput.value = '';
+                durationInput.value = '';
+                anticipatedInput.value = ''; // Clear new input
+                document.getElementById('addCommitmentForm').classList.add('hidden');
+            } catch (error) {
+                console.error("Error adding new commitment:", error);
+            }
+        };
+        
+        // This function must be globally accessible for the onclick event in the table
+        window.deleteCommitment = async (buttonElement) => {
+            if (!userId || !window.results) { return; }
+            const idToDelete = buttonElement.dataset.id;
+            
+            // Filter out the item to delete, and ensure the remaining items are clean for saving
+            const commitmentsToSave = window.results.commitments
+                .filter(item => item.id !== idToDelete)
+                .map(item => ({
+                    name: item.name,
+                    contractValue: item.contractValue || 0,
+                    workCompletedValue: item.workCompletedValue || 0,
+                    existingDurationMonths: item.existingDurationMonths,
+                    anticipatedCompletionDate: item.anticipatedCompletionDate || '' // NEW FIELD
+                }));
+            
+            const docRef = doc(db, DATA_DOC_PATH(userId));
+
+            try {
+                await updateDoc(docRef, { existingCommitments: commitmentsToSave });
+            } catch (error)
+                console.error("Error deleting commitment:", error);
+            }
+        };
+
+        // --- Firebase Initialization ---
+        
+        const initializeFirebase = async () => {
+            try {
+                if (!firebaseConfig) { throw new Error("Firebase config not found."); }
+                
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // --- NEW: ENABLE OFFLINE PERSISTENCE ---
+                try {
+                    await enableIndexedDbPersistence(db);
+                    console.log("Firestore offline persistence enabled.");
+                } catch (err) {
+                    if (err.code == 'failed-precondition') {
+                        // Multiple tabs open, only one can enable
+                        console.warn("Firestore offline persistence failed (failed-precondition), likely multiple tabs open.");
+                    } else if (err.code == 'unimplemented') {
+                        // Browser not supported
+                        console.warn("Firestore offline persistence is not supported in this browser.");
+                    }
+                }
+                // --- END OFFLINE BLOCK ---
+
+                document.getElementById('auth-status').textContent = 'Authenticating...';
+
+                // Handle Authentication
+                let unsubscribe = onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        isAuthReady = true;
+                        document.getElementById('auth-status').textContent = `Authenticated User ID: ${userId}`;
+                        setupRealtimeListener();
+                    } else {
+                        // Attempt sign in
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    }
+                    if (unsubscribe) {
+                        // Stop listening after the first state change
+                        unsubscribe(); 
+                    }
+                });
+
+                // Attach event listeners for global inputs
+                document.getElementById('bidDueDate').addEventListener('change', updateGlobalInputs); // NEW
+                document.getElementById('projectDuration').addEventListener('change', updateGlobalInputs);
+                document.getElementById('bonusC').addEventListener('change', updateGlobalInputs);
+                document.getElementById('saveNewCommitment').addEventListener('click', addNewCommitment);
+                document.getElementById('showAddCommitment').addEventListener('click', () => {
+                    document.getElementById('addCommitmentForm').classList.toggle('hidden');
+                });
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                document.getElementById('auth-status').textContent = `Authentication Failed: ${error.message}`;
+            }
+        };
+
+        window.onload = initializeFirebase;
+
+        // --- NEW: PWA SERVICE WORKER REGISTRATION ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./serviceworker.js')
+                    .then((reg) => console.log('Service worker registered.', reg))
+                    .catch((err) => console.log('Service worker registration failed:', err));
+            });
+        }
+        // --- END PWA REGISTRATION ---
+
+    </script>
+
+</body>
+</html>
